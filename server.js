@@ -39,6 +39,14 @@ app.get("/search", (req, res) => {
     });
   }
 
+  // Cek apakah lokasi keberangkatan dan tujuan sama
+  if (from === to) {
+    return res.status(404).json({
+      message: "Invalid airports. Departure and arrival locations cannot be the same.",
+      data: [],
+    });
+  }
+
   if (!flightGraph.hasNode(from) || !flightGraph.hasNode(to)) {
     return res.status(404).json({
       message: "Invalid airports. No data found.",
