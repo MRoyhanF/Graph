@@ -46,11 +46,44 @@ app.get("/search", (req, res) => {
     });
   }
 
-  // Menentukan semua kemungkinan rute (multi-hop) dari from ke to
+  const validFlights = flights.filter((flight) => (date ? flight.date === date : true));
+  const routes = [];
+  const uniqueRoutes = new Set(); // Set untuk memastikan tidak ada rute duplikat
+  let totalDistance = 0;
+
+  // **Periksa penerbangan langsung terlebih dahulu**
+  const directFlight = validFlights.find((flight) => flight.from === from && flight.to === to);
+
+  if (directFlight) {
+    const routeKey = `${directFlight.from}-${directFlight.to}`;
+    if (!uniqueRoutes.has(routeKey)) {
+      routes.push({
+        penerbangan: routes.length + 1,
+        isTransit: false,
+        from: directFlight.from,
+        to: directFlight.to,
+        route: [
+          {
+            sequence: 1,
+            idFlight: directFlight.id,
+            distance: directFlight.distance,
+            from: directFlight.from,
+            to: directFlight.to,
+            arrivalTime: directFlight.arrivalTime,
+            departureTime: directFlight.departureTime,
+            date: directFlight.date,
+          },
+        ],
+      });
+      uniqueRoutes.add(routeKey);
+      totalDistance += directFlight.distance;
+    }
+  }
+
+  // **Cari semua jalur transit hanya jika tidak ada penerbangan langsung**
   const allPaths = [];
   const visited = new Set();
 
-  // Fungsi untuk mencari semua jalur dari node `from` ke node `to`
   function findPaths(currentNode, targetNode, path) {
     if (visited.has(currentNode)) return;
     visited.add(currentNode);
@@ -67,33 +100,30 @@ app.get("/search", (req, res) => {
     visited.delete(currentNode);
   }
 
-  // Mencari semua jalur dari 'from' ke 'to'
   findPaths(from, to, []);
 
-  if (allPaths.length === 0) {
+  if (allPaths.length === 0 && routes.length === 0) {
     return res.status(404).json({
       message: "No valid path found.",
       data: [],
     });
   }
 
-  // Memproses rute dan menghitung total jarak
-  const validFlights = flights.filter((flight) => (date ? flight.date === date : true));
-  const routes = [];
-  let totalDistance = 0;
+  // **Proses rute transit**
+  allPaths.forEach((path) => {
+    const pathKey = path.join("-"); // Buat key unik untuk rute transit
+    if (uniqueRoutes.has(pathKey)) return; // Lewati jika sudah ada
 
-  allPaths.forEach((path, pathIndex) => {
     const pathRoutes = [];
     let pathDistance = 0;
+    let validPath = true;
 
     for (let i = 0; i < path.length - 1; i++) {
       const segment = validFlights.find((flight) => flight.from === path[i] && flight.to === path[i + 1]);
 
       if (!segment) {
-        return res.status(404).json({
-          message: "No valid flights for the given path.",
-          data: [],
-        });
+        validPath = false;
+        break;
       }
 
       pathDistance += segment.distance;
@@ -109,14 +139,17 @@ app.get("/search", (req, res) => {
       });
     }
 
-    totalDistance += pathDistance;
-    routes.push({
-      penerbangan: pathIndex + 1,
-      isTransit: path.length > 2, // Menandakan apakah rute melibatkan transit
-      from: path[0],
-      to: path[path.length - 1],
-      route: pathRoutes,
-    });
+    if (validPath) {
+      routes.push({
+        penerbangan: routes.length + 1,
+        isTransit: path.length > 2,
+        from: path[0],
+        to: path[path.length - 1],
+        route: pathRoutes,
+      });
+      uniqueRoutes.add(pathKey);
+      totalDistance += pathDistance;
+    }
   });
 
   res.json({
