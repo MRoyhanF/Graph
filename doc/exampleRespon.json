@@ -1,0 +1,55 @@
+{
+    "message": "Transmitting data",
+    "total penerbangan": 2,
+    "departureLocation": "MEDAN",
+    "arrivalLocation": "BALI",
+    "totalDistance": 2000,
+    "data": [
+        {
+            "penerbangan": 1,
+            "isTransit": true,
+            "from": "MEDAN",
+            "to": "BALI",
+            "route": [
+                {
+                    "sequence": 1,
+                    "id": 1,
+                    "distance": 1000,
+                    "from": "MEDAN",
+                    "to": "BALI",
+                    "arivalTime": "08:00",
+                    "departureTime": "09:00",
+                    "date": "2024-12-06"
+                },
+                {
+                    "sequence": 2,
+                    "id": 2,
+                    "distance": 1000,
+                    "from": "JAKARTA",
+                    "to": "BALI",
+                    "arivalTime": "010:00",
+                    "departureTime": "011:00",
+                    "date": "2024-12-06"
+                }
+            ]
+        },
+        {
+            "penerbangan": 2,
+            "isTransit": false,
+            "from": "JAKARTA",
+            "to": "BALI",
+            "route": [
+                {
+                    "sequence": 1,
+                    "id": 3,
+                    "distance": 1000,
+                    "from": "JAKARTA",
+                    "to": "BALI",
+                    "arivalTime": "08:00",
+                    "departureTime": "09:00",
+                    "date": "2024-12-06"
+                }
+            ]
+        },{},{},{}
+    ]
+}
