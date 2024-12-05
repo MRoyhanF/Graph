@@ -32,141 +32,129 @@ app.get("/flights", (req, res) => {
 app.get("/search", (req, res) => {
   const { from, to, date } = req.query;
 
-  if (!from || !to) {
-    return res.status(400).json({
-      message: "Invalid query parameters. 'from' and 'to' are required.",
-      data: [],
+  // Jika tidak ada parameter, kembalikan semua penerbangan
+  if (!from && !to && !date) {
+    return res.json({
+      message: "All flight data",
+      totalPenerbangan: flights.length,
+      data: flights,
     });
   }
 
-  // Cek apakah lokasi keberangkatan dan tujuan sama
-  if (from === to) {
-    return res.status(404).json({
-      message: "Invalid airports. Departure and arrival locations cannot be the same.",
-      data: [],
-    });
+  // Filter penerbangan berdasarkan parameter yang ada
+  let filteredFlights = flights;
+
+  if (from) {
+    filteredFlights = filteredFlights.filter((flight) => flight.from === from);
   }
 
-  if (!flightGraph.hasNode(from) || !flightGraph.hasNode(to)) {
-    return res.status(404).json({
-      message: "Invalid airports. No data found.",
-      data: [],
-    });
+  if (to) {
+    filteredFlights = filteredFlights.filter((flight) => flight.to === to);
   }
 
-  const validFlights = flights.filter((flight) => (date ? flight.date === date : true));
-  const routes = [];
-  const uniqueRoutes = new Set(); // Set untuk memastikan tidak ada rute duplikat
-  let totalDistance = 0;
-
-  // **Periksa penerbangan langsung terlebih dahulu**
-  const directFlight = validFlights.find((flight) => flight.from === from && flight.to === to);
-
-  if (directFlight) {
-    const routeKey = `${directFlight.from}-${directFlight.to}`;
-    if (!uniqueRoutes.has(routeKey)) {
-      routes.push({
-        penerbangan: routes.length + 1,
-        isTransit: false,
-        from: directFlight.from,
-        to: directFlight.to,
-        route: [
-          {
-            sequence: 1,
-            idFlight: directFlight.id,
-            distance: directFlight.distance,
-            from: directFlight.from,
-            to: directFlight.to,
-            arrivalTime: directFlight.arrivalTime,
-            departureTime: directFlight.departureTime,
-            date: directFlight.date,
-          },
-        ],
-      });
-      uniqueRoutes.add(routeKey);
-      totalDistance += directFlight.distance;
-    }
+  if (date) {
+    filteredFlights = filteredFlights.filter((flight) => flight.date === date);
   }
 
-  // **Cari semua jalur transit hanya jika tidak ada penerbangan langsung**
-  const allPaths = [];
-  const visited = new Set();
-
-  function findPaths(currentNode, targetNode, path) {
-    if (visited.has(currentNode)) return;
-    visited.add(currentNode);
-    path.push(currentNode);
-
-    if (currentNode === targetNode) {
-      allPaths.push(path.slice());
-    } else {
-      flightGraph.neighbors(currentNode).forEach((neighbor) => {
-        findPaths(neighbor, targetNode, path);
+  // Jika ada parameter `from` dan `to`, lakukan pencarian transit
+  if (from && to) {
+    if (!flightGraph.hasNode(from) || !flightGraph.hasNode(to)) {
+      return res.status(404).json({
+        message: "Invalid airports. No data found.",
+        data: [],
       });
     }
-    path.pop();
-    visited.delete(currentNode);
-  }
 
-  findPaths(from, to, []);
+    const allPaths = [];
+    const visited = new Set();
 
-  if (allPaths.length === 0 && routes.length === 0) {
-    return res.status(404).json({
-      message: "No valid path found.",
-      data: [],
-    });
-  }
+    function findPaths(currentNode, targetNode, path) {
+      if (visited.has(currentNode)) return;
+      visited.add(currentNode);
+      path.push(currentNode);
 
-  // **Proses rute transit**
-  allPaths.forEach((path) => {
-    const pathKey = path.join("-"); // Buat key unik untuk rute transit
-    if (uniqueRoutes.has(pathKey)) return; // Lewati jika sudah ada
+      if (currentNode === targetNode) {
+        allPaths.push(path.slice());
+      } else {
+        flightGraph.neighbors(currentNode).forEach((neighbor) => {
+          findPaths(neighbor, targetNode, path);
+        });
+      }
+      path.pop();
+      visited.delete(currentNode);
+    }
 
-    const pathRoutes = [];
-    let pathDistance = 0;
-    let validPath = true;
+    findPaths(from, to, []);
 
-    for (let i = 0; i < path.length - 1; i++) {
-      const segment = validFlights.find((flight) => flight.from === path[i] && flight.to === path[i + 1]);
+    if (allPaths.length === 0) {
+      return res.status(404).json({
+        message: "No valid path found.",
+        data: [],
+      });
+    }
 
-      if (!segment) {
-        validPath = false;
-        break;
+    const routes = [];
+    let totalDistance = 0;
+
+    allPaths.forEach((path, pathIndex) => {
+      const pathRoutes = [];
+      let pathDistance = 0;
+
+      for (let i = 0; i < path.length - 1; i++) {
+        const segment = flights.find((flight) => flight.from === path[i] && flight.to === path[i + 1] && (!date || flight.date === date));
+
+        if (!segment) {
+          return;
+        }
+
+        pathDistance += segment.distance;
+        pathRoutes.push({
+          sequence: i + 1,
+          idFlight: segment.id,
+          distance: segment.distance,
+          from: segment.from,
+          to: segment.to,
+          arrivalTime: segment.arrivalTime,
+          departureTime: segment.departureTime,
+          date: segment.date,
+        });
       }
 
-      pathDistance += segment.distance;
-      pathRoutes.push({
-        sequence: i + 1,
-        idFlight: segment.id,
-        distance: segment.distance,
-        from: segment.from,
-        to: segment.to,
-        arrivalTime: segment.arrivalTime,
-        departureTime: segment.departureTime,
-        date: segment.date,
-      });
-    }
-
-    if (validPath) {
-      routes.push({
-        penerbangan: routes.length + 1,
-        isTransit: path.length > 2,
-        from: path[0],
-        to: path[path.length - 1],
-        route: pathRoutes,
-      });
-      uniqueRoutes.add(pathKey);
       totalDistance += pathDistance;
-    }
-  });
+      if (pathRoutes.length > 0) {
+        routes.push({
+          penerbangan: pathIndex + 1,
+          isTransit: path.length > 2,
+          from: path[0],
+          to: path[path.length - 1],
+          route: pathRoutes,
+        });
+      }
+    });
 
-  res.json({
-    message: "Transmitting data",
-    totalPenerbangan: routes.length,
-    departureLocation: from,
-    arrivalLocation: to,
-    totalDistance,
-    data: routes,
+    return res.json({
+      message: "Transmitting data",
+      totalPenerbangan: routes.length,
+      departureLocation: from,
+      arrivalLocation: to,
+      totalDistance,
+      data: routes,
+    });
+  }
+
+  // Jika hasil filter kosong, kembalikan pesan bahwa tidak ada penerbangan yang sesuai
+  if (filteredFlights.length === 0) {
+    return res.status(404).json({
+      message: "No matching flights found.",
+      data: [],
+    });
+  }
+
+  // Kembalikan hasil filter
+  return res.json({
+    message: "Filtered flight data",
+    totalPenerbangan: filteredFlights.length,
+    data: filteredFlights,
   });
 });
 
